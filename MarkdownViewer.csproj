@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>7.3</LangVersion>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <AssemblyName>MarkdownViewer</AssemblyName>
+    <RootNamespace>MarkdownViewer</RootNamespace>
+    <Deterministic>false</Deterministic>
+    <StartupObject>MarkdownViewer.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Management" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>$(USERPROFILE)\.nuget\packages\webview2\1.0.2739.15\lib\net462\Microsoft.Web.WebView2.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.WinForms">
+      <HintPath>$(USERPROFILE)\.nuget\packages\webview2\1.0.2739.15\lib\net462\Microsoft.Web.WebView2.WinForms.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Core\*.cs" />
+    <Compile Include="Forms\*.cs" />
+    <Compile Include="Hooks\*.cs" />
+    <Compile Include="Resources\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="mermaid.min.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

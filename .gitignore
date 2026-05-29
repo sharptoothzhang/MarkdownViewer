@@ -1,0 +1,27 @@
+# Build output
+Release/
+Bin/
+Obj/
+
+# Test executables
+Test.exe
+E2ETest.exe
+
+# IDE
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+.idea/
+
+# Logs
+*.log
+
+# NuGet packages (if using PackageReference)
+packages/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
