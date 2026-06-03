@@ -467,7 +467,12 @@ namespace MarkdownViewer.Forms
 
         void LoadFileForPreview(string path)
         {
-            if (currentFileType == FileType.Markdown || currentFileType == FileType.Text)
+            if (currentFileType == FileType.Text)
+            {
+                Editor.Text = File.ReadAllText(path);
+                SwitchToEdit();
+            }
+            else if (currentFileType == FileType.Markdown)
             {
                 Editor.Text = File.ReadAllText(path);
                 if (IsPreviewMode) RefreshPreview();
@@ -530,7 +535,13 @@ namespace MarkdownViewer.Forms
 
         void UpdateEditState()
         {
-            if (CanEdit)
+            if (currentFileType == FileType.Text)
+            {
+                Editor.ReadOnly = false;
+                ViewToggleBtn.Enabled = false;
+                if (!IsPreviewMode) SwitchToEdit();
+            }
+            else if (CanEdit)
             {
                 Editor.ReadOnly = false;
                 ViewToggleBtn.Enabled = true;
@@ -587,6 +598,7 @@ namespace MarkdownViewer.Forms
 
         public void SwitchToPreview()
         {
+            if (currentFileType == FileType.Text) return;
             IsPreviewMode = true;
             Editor.Visible = false;
             Preview.Visible = true;
@@ -599,7 +611,7 @@ namespace MarkdownViewer.Forms
 
         void RefreshPreviewForCurrentFile()
         {
-            if (currentFileType == FileType.Markdown || currentFileType == FileType.Text)
+            if (currentFileType == FileType.Markdown)
             {
                 RefreshPreview();
             }
