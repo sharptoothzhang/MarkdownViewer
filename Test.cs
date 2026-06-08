@@ -86,6 +86,33 @@ class MarkdownParserTest
         string input = "| a | b |\n|---|---|\n| 1 | 2 |";
         string result = MarkdownParser.Parse(input).Html;
         Assert("Table", result.Contains("<table>") && result.Contains("<th>") && result.Contains("<td>"));
+
+        string input2 = "- **Notepad 的具体对比指标**\n| 场景 | MyTextPad | Windows Notepad | VS Code |\n|------|-----------|----------------|---------|\n| 冷启动时间| 300-800ms | <100ms | 2-5s |";
+        string result2 = MarkdownParser.Parse(input2).Html;
+        Assert("Table with preceding list item", result2.Contains("<table>"));
+
+        string input3 = "1. **Notepad 的具体对比指标**\n| 场景 | MyTextPad | Windows Notepad | VS Code |\n|------|-----------|----------------|---------|";
+        string result3 = MarkdownParser.Parse(input3).Html;
+        Assert("Table with preceding ordered list item", result3.Contains("<table>"));
+
+        string inputTablePara = "段落内容\n| a | b |\n|---|---|\n| 1 | 2 |";
+        string resultTablePara = MarkdownParser.Parse(inputTablePara).Html;
+        Assert("Table after paragraph", resultTablePara.Contains("<table>"));
+
+        string input4 = "**学习价值*";
+        string result4 = MarkdownParser.Parse(input4).Html;
+        Assert("Incomplete bold **学习价值* auto-completes to **学习价值**", result4.Contains("<strong>学习价值</strong>"));
+
+        string input5 = "**学习价值*其他内容";
+        string result5 = MarkdownParser.Parse(input5).Html;
+        Assert("Incomplete bold in middle **学习价值*其他内容", result5.Contains("<strong>学习价值</strong>"));
+
+        string input6 = "text **学习价值* more **粗体** text";
+        string result6 = MarkdownParser.Parse(input6).Html;
+        Assert("Incomplete bold mixed with valid bold", result6.Contains("<strong>学习价值</strong>") && result6.Contains("<strong>粗体</strong>"));
+
+        Assert("Normal bold **text** still works", MarkdownParser.Parse("**正常粗体**").Html.Contains("<strong>正常粗体</strong>"));
+        Assert("Normal italic *text* still works", MarkdownParser.Parse("*斜体*").Html.Contains("<em>斜体</em>"));
     }
 
     static void TestHr()

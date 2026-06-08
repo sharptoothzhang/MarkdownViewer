@@ -20,7 +20,7 @@ h2{font-size:22px;color:#444;border-bottom:1px solid #ddd;padding-bottom:5px}
 h3{font-size:18px;color:#555}
 p{margin:10px 0}
 code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:Consolas}
-pre{background:#f5f5f5;padding:15px;border-radius:5px;border:1px solid #ddd;overflow-x:auto}
+pre{background:#f6f8fa;padding:15px;border-radius:5px;border:1px solid #ddd;overflow-x:auto}
 pre code{background:none;padding:0;border:none}
 blockquote{border-left:4px solid #407040;margin:15px 0;padding:10px 15px;background:#f9f9f9;color:#555}
 a{color:#4070a0}
@@ -33,6 +33,7 @@ th{background:#f5f5f5;font-weight:600}
 tr:nth-child(even){background:#fafafa}
 del{color:#999}
 .mermaid{background:#fff;text-align:center;margin:15px 0}
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#24292e;background:#f6f8fa}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
 </style>";
 
         static readonly string CSS_DARK = @"<style>
@@ -42,7 +43,7 @@ h2{font-size:22px;color:#ccc;border-bottom:1px solid #444;padding-bottom:5px}
 h3{font-size:18px;color:#aaa}
 p{margin:10px 0}
 code{background:#2d2d2d;padding:2px 6px;border-radius:3px;font-family:Consolas;color:#ce9178}
-pre{background:#252526;padding:15px;border-radius:5px;border:1px solid #444;overflow-x:auto}
+pre{background:#1e1e1e;padding:15px;border-radius:5px;border:1px solid #444;overflow-x:auto}
 pre code{background:none;padding:0;border:none;color:#d4d4d4}
 blockquote{border-left:4px solid #4caf50;margin:15px 0;padding:10px 15px;background:#2d2d2d;color:#aaa}
 a{color:#6db3f2}
@@ -55,6 +56,7 @@ th{background:#2d2d2d;font-weight:600}
 tr:nth-child(even){background:#252526}
 del{color:#6b6b6b}
 .mermaid{background:#2d2d2d;text-align:center;margin:15px 0}
+pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#c9d1d9;background:#1e1e1e}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}
 </style>";
 
         static MarkdownPipeline pipeline;
@@ -83,6 +85,9 @@ del{color:#6b6b6b}
                     HasMermaid = false
                 };
             }
+
+            markdown = EnsureTableBreak(markdown);
+            markdown = FixIncompleteBold(markdown);
 
             var mermaidBlocks = new System.Collections.Generic.List<string>();
             string processed = Regex.Replace(
@@ -147,6 +152,28 @@ del{color:#6b6b6b}
                 lines[i] = line;
             }
             return string.Join("\n", lines);
+        }
+
+        static string EnsureTableBreak(string markdown)
+        {
+            string[] lines = markdown.Split('\n');
+            StringBuilder result = new StringBuilder();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (i > 0 && Regex.IsMatch(lines[i], @"^\s*\|") && !Regex.IsMatch(lines[i - 1], @"^\s*$|\s*\|"))
+                {
+                    result.Append("\n");
+                }
+                result.Append(lines[i]);
+                if (i < lines.Length - 1)
+                    result.Append("\n");
+            }
+            return result.ToString();
+        }
+
+        static string FixIncompleteBold(string markdown)
+        {
+            return Regex.Replace(markdown, @"\*\*([^*]+)\*(?!\*)", "**$1**");
         }
     }
 }

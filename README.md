@@ -122,6 +122,11 @@ MarkdownViewer/
 │   └── KeyHook.cs         # 键盘钩子
 ├── Resources/        # 资源
 │   └── HelpContent.cs     # 帮助内容 HTML
+├── Scripts/          # 前端脚本
+│   ├── highlight.min.js   # 语法高亮库
+│   ├── hljs-github.min.css # 浅色主题
+│   ├── hljs-github-dark.min.css # 深色主题
+│   └── mermaid.min.js     # Mermaid 图表库
 ├── E2E/              # E2E 测试
 │   └── E2ETests.cs        # E2E 测试用例
 ├── lib/              # 第三方库
@@ -133,6 +138,9 @@ MarkdownViewer/
 ├── Release/          # 发布版本
 │   ├── MarkdownViewer.exe
 │   ├── app.ico
+│   ├── highlight.min.js
+│   ├── hljs-github.min.css
+│   ├── hljs-github-dark.min.css
 │   └── mermaid.min.js
 ├── Test.cs           # 单元测试 (28项)
 ├── build.bat         # 构建脚本
@@ -192,6 +200,10 @@ E2E 测试需要 .NET Framework 4.0+，使用 Win32 API 进行窗口操作和 UI
 - TestPreviewLoading - 预览加载测试
 
 ## 版本历史
+
+### v1.7
+- 代码块语法高亮（highlight.js，支持 190+ 语言，浅色/深色主题）
+- 修复列表项后紧跟表格时表格无法被识别的问题（自动插入空行分隔）
 
 ### v1.6
 - NavigateToString 替代临时文件方案（不再生成 _preview.html）

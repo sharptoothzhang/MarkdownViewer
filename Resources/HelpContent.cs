@@ -49,7 +49,7 @@ tr:nth-child(even){background:#fafafa}
 <tr><td>---</td><td>分隔线</td></tr>
 </table>
 <h2>版本</h2>
-<p>v1.6</p>
+<p>v1.7</p>
 </body></html>";
     }
 }

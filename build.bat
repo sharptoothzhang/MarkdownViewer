@@ -6,6 +6,9 @@ echo === Copy resources ===
 if not exist Release mkdir Release
 copy app.ico Release\ >nul
 copy Scripts\mermaid.min.js Release\ >nul
+copy Scripts\highlight.min.js Release\ >nul
+copy Scripts\hljs-github.min.css Release\ >nul
+copy Scripts\hljs-github-dark.min.css Release\ >nul
 
 echo === Running Unit Tests ===
 copy /Y lib\Markdig.dll . >nul 2>nul
