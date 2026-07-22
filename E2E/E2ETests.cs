@@ -200,7 +200,9 @@ namespace MarkdownViewer.E2E
 
         static void TestLaunchApp()
         {
-            StartApp("");
+            string testMdPath = Path.Combine(root, "test.md");
+            if (!File.Exists(testMdPath)) testMdPath = "";
+            StartApp(testMdPath);
             Assert("Launch app", mainWindowHandle != IntPtr.Zero);
         }
 

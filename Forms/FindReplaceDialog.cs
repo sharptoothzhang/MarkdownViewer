@@ -10,12 +10,35 @@ namespace MarkdownViewer.Forms
         TextBox replaceBox;
         CheckBox caseCheck;
         RichTextBox editor;
+        Panel replacePanel;
+        LinkLabel linkReplace;
+        bool showReplace = false;
+
+        public string FindText { get { return findBox.Text; } }
+        public string ReplaceText { get { return replaceBox.Text; } }
+        public bool CaseSensitive { get { return caseCheck.Checked; } }
+        public bool ShowReplace { get { return showReplace; } }
+
+        public void SetFindText(string text)
+        {
+            findBox.Text = text;
+        }
+
+        public void SetReplaceText(string text)
+        {
+            replaceBox.Text = text;
+        }
+
+        public void SetCaseSensitive(bool value)
+        {
+            caseCheck.Checked = value;
+        }
 
         public FindReplaceDialog(RichTextBox editor, Form owner)
         {
             this.editor = editor;
             Text = "查找";
-            Size = new Size(380, 130);
+            Size = new Size(380, 100);
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -35,14 +58,14 @@ namespace MarkdownViewer.Forms
 
             Label l1 = new Label();
             l1.Text = "查找:";
-            l1.Location = new Point(10, 12);
+            l1.Location = new Point(10, 10);
             l1.Size = new Size(40, 20);
             l1.ForeColor = SystemColors.WindowText;
             Controls.Add(l1);
 
             findBox = new TextBox();
-            findBox.Location = new Point(50, 10);
-            findBox.Size = new Size(200, 20);
+            findBox.Location = new Point(50, 8);
+            findBox.Size = new Size(150, 20);
             findBox.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { FindNext(); e.SuppressKeyPress = true; }
@@ -52,7 +75,7 @@ namespace MarkdownViewer.Forms
 
             Button prevBtn = new Button();
             prevBtn.Text = "上一个";
-            prevBtn.Location = new Point(255, 8);
+            prevBtn.Location = new Point(215, 6);
             prevBtn.Size = new Size(55, 24);
             prevBtn.FlatStyle = FlatStyle.Flat;
             prevBtn.Click += delegate(object s, EventArgs e) { FindPrev(); };
@@ -60,53 +83,91 @@ namespace MarkdownViewer.Forms
 
             Button nextBtn = new Button();
             nextBtn.Text = "下一个";
-            nextBtn.Location = new Point(315, 8);
+            nextBtn.Location = new Point(275, 6);
             nextBtn.Size = new Size(55, 24);
             nextBtn.FlatStyle = FlatStyle.Flat;
             nextBtn.Click += delegate(object s, EventArgs e) { FindNext(); };
             Controls.Add(nextBtn);
 
+            caseCheck = new CheckBox();
+            caseCheck.Text = "区分大小写";
+            caseCheck.Location = new Point(50, 35);
+            caseCheck.Size = new Size(100, 20);
+            caseCheck.ForeColor = SystemColors.WindowText;
+            Controls.Add(caseCheck);
+
+            linkReplace = new LinkLabel();
+            linkReplace.Text = "替换";
+            linkReplace.Location = new Point(50, 35);
+            linkReplace.Size = new Size(50, 20);
+            linkReplace.LinkClicked += delegate(object s, LinkLabelLinkClickedEventArgs e)
+            {
+                showReplace = !showReplace;
+                UpdateReplaceVisibility();
+            };
+            Controls.Add(linkReplace);
+
+            replacePanel = new Panel();
+            replacePanel.Location = new Point(0, 60);
+            replacePanel.Size = new Size(380, 50);
+            Controls.Add(replacePanel);
+
             Label l2 = new Label();
             l2.Text = "替换:";
-            l2.Location = new Point(10, 42);
+            l2.Location = new Point(10, 8);
             l2.Size = new Size(40, 20);
             l2.ForeColor = SystemColors.WindowText;
-            Controls.Add(l2);
+            replacePanel.Controls.Add(l2);
 
             replaceBox = new TextBox();
-            replaceBox.Location = new Point(50, 40);
-            replaceBox.Size = new Size(200, 20);
+            replaceBox.Location = new Point(50, 6);
+            replaceBox.Size = new Size(150, 20);
             replaceBox.KeyDown += delegate(object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { ReplaceNext(); e.SuppressKeyPress = true; }
                 if (e.KeyCode == Keys.Escape) { Hide(); e.SuppressKeyPress = true; }
             };
-            Controls.Add(replaceBox);
+            replacePanel.Controls.Add(replaceBox);
 
             Button replaceBtn = new Button();
             replaceBtn.Text = "替换";
-            replaceBtn.Location = new Point(255, 38);
+            replaceBtn.Location = new Point(210, 4);
             replaceBtn.Size = new Size(55, 24);
             replaceBtn.FlatStyle = FlatStyle.Flat;
             replaceBtn.Click += delegate(object s, EventArgs e) { ReplaceNext(); };
-            Controls.Add(replaceBtn);
+            replacePanel.Controls.Add(replaceBtn);
 
             Button replaceAllBtn = new Button();
             replaceAllBtn.Text = "全部";
-            replaceAllBtn.Location = new Point(315, 38);
+            replaceAllBtn.Location = new Point(270, 4);
             replaceAllBtn.Size = new Size(55, 24);
             replaceAllBtn.FlatStyle = FlatStyle.Flat;
             replaceAllBtn.Click += delegate(object s, EventArgs e) { ReplaceAll(); };
-            Controls.Add(replaceAllBtn);
+            replacePanel.Controls.Add(replaceAllBtn);
 
-            caseCheck = new CheckBox();
-            caseCheck.Text = "区分大小写";
-            caseCheck.Location = new Point(50, 70);
-            caseCheck.Size = new Size(100, 20);
-            caseCheck.ForeColor = SystemColors.WindowText;
-            Controls.Add(caseCheck);
+            UpdateReplaceVisibility();
 
             findBox.Focus();
+        }
+
+        public void SetShowReplace(bool show)
+        {
+            showReplace = show;
+            UpdateReplaceVisibility();
+        }
+
+        void UpdateReplaceVisibility()
+        {
+            if (replacePanel == null) return;
+            replacePanel.Visible = showReplace;
+            if (showReplace)
+            {
+                Size = new Size(380, 140);
+            }
+            else
+            {
+                Size = new Size(380, 100);
+            }
         }
 
         protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
@@ -115,7 +176,7 @@ namespace MarkdownViewer.Forms
             return base.ProcessCmdKey(ref msg, keyData);
         }
 
-        void FindNext()
+        public void FindNext()
         {
             if (string.IsNullOrEmpty(findBox.Text)) return;
             RichTextBoxFinds options = RichTextBoxFinds.None;

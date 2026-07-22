@@ -19,6 +19,7 @@ namespace MarkdownViewer.Forms
         RichTextBox Editor;
         WebView2 Preview;
         ToolStripButton ViewToggleBtn;
+        FindReplaceDialog _findDlg;
         StatusStrip StatusBar;
         ToolStripStatusLabel StatusLabel;
         ToolStripStatusLabel ZoomValueLabel;
@@ -94,6 +95,7 @@ namespace MarkdownViewer.Forms
                 Preview.CoreWebView2.Settings.IsWebMessageEnabled = true;
                 Preview.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 Preview.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                Preview.CoreWebView2.AddHostObjectToScript("app", this);
                 Preview.CoreWebView2.SetVirtualHostNameToFolderMapping(
                     "appassets.local",
                     Application.StartupPath,
@@ -165,7 +167,9 @@ namespace MarkdownViewer.Forms
                     case 0x4F: OpenFileDialog(); break;
                     case 0x50: SwitchToPreview(); break;
                     case 0x45: SwitchToEdit(); break;
-                    case 0x46: ShowFindReplace(); break;
+                    case 0x46:
+                        if (!IsPreviewMode) ShowFindReplace();
+                        break;
                     case 0x53: SaveFile(); break;
                 }
             }));
@@ -301,6 +305,7 @@ namespace MarkdownViewer.Forms
                     case Keys.E: SwitchToEdit(); e.SuppressKeyPress = true; break;
                     case Keys.P: SwitchToPreview(); e.SuppressKeyPress = true; break;
                     case Keys.F: ShowFindReplace(); e.SuppressKeyPress = true; break;
+                    case Keys.H: ShowFindReplace(true); e.SuppressKeyPress = true; break;
                 }
                 if (e.Shift && e.KeyCode == Keys.S) { SaveFileAs(); e.SuppressKeyPress = true; }
             }
@@ -326,6 +331,7 @@ namespace MarkdownViewer.Forms
                     case Keys.E: SwitchToEdit(); return true;
                     case Keys.P: SwitchToPreview(); return true;
                     case Keys.F: ShowFindReplace(); return true;
+                    case Keys.H: ShowFindReplace(true); return true;
                 }
             }
             else if (keyData == Keys.F1)
@@ -418,6 +424,7 @@ namespace MarkdownViewer.Forms
         {
             if (!PromptSave()) return;
             CurrentFile = "";
+            currentFileType = FileType.Markdown;
             Editor.Text = "";
             cachedHtml = null;
             cachedText = null;
@@ -587,6 +594,14 @@ namespace MarkdownViewer.Forms
         public void SwitchToEdit()
         {
             if (!CanEdit) return;
+            string findText = "";
+            bool wasFindVisible = false;
+            if (_findDlg != null && _findDlg.Visible)
+            {
+                findText = _findDlg.FindText;
+                wasFindVisible = true;
+                _findDlg.Hide();
+            }
             IsPreviewMode = false;
             Editor.Visible = true;
             Preview.Visible = false;
@@ -594,11 +609,28 @@ namespace MarkdownViewer.Forms
             ViewToggleBtn.Image = editIcon;
             string name = string.IsNullOrEmpty(CurrentFile) ? "无标题" : System.IO.Path.GetFileName(CurrentFile);
             Text = name + " [编辑] - Markdown Viewer";
+            if (wasFindVisible && !string.IsNullOrEmpty(findText))
+            {
+                ShowFindReplace();
+                if (_findDlg != null)
+                {
+                    _findDlg.SetFindText(findText);
+                    _findDlg.FindNext();
+                }
+            }
         }
 
         public void SwitchToPreview()
         {
             if (currentFileType == FileType.Text) return;
+            string findText = "";
+            bool wasFindVisible = false;
+            if (_findDlg != null && _findDlg.Visible)
+            {
+                findText = _findDlg.FindText;
+                wasFindVisible = true;
+                _findDlg.Hide();
+            }
             IsPreviewMode = true;
             Editor.Visible = false;
             Preview.Visible = true;
@@ -607,6 +639,15 @@ namespace MarkdownViewer.Forms
             string name = string.IsNullOrEmpty(CurrentFile) ? "无标题" : System.IO.Path.GetFileName(CurrentFile);
             Text = name + " [预览] - Markdown Viewer";
             RefreshPreviewForCurrentFile();
+            if (wasFindVisible && !string.IsNullOrEmpty(findText))
+            {
+                if (Preview.CoreWebView2 != null)
+                {
+                    Preview.CoreWebView2.ExecuteScriptAsync(
+                        "window.find(" + EscapeJs(findText) + "); true"
+                    );
+                }
+            }
         }
 
         void RefreshPreviewForCurrentFile()
@@ -623,6 +664,13 @@ namespace MarkdownViewer.Forms
             {
                 PreviewPdf(CurrentFile);
             }
+        }
+
+        string EscapeJs(string text)
+        {
+            if (text == null) return "''";
+            string s = text.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r").Replace("\t", "\\t");
+            return "'" + s + "'";
         }
 
         void ToggleView()
@@ -717,7 +765,7 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('keydown', function(e) {
     if (e.ctrlKey) {
         var key = e.key.toUpperCase();
-        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'F' || key === 'S') {
+        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'S') {
             e.preventDefault();
             window.chrome.webview.postMessage('KEY_' + key);
         }
@@ -750,7 +798,7 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('keydown', function(e) {
     if (e.ctrlKey) {
         var key = e.key.toUpperCase();
-        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'F' || key === 'S') {
+        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'S') {
             e.preventDefault();
             window.chrome.webview.postMessage('KEY_' + key);
         }
@@ -893,8 +941,22 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
         void ShowFindReplace()
         {
-            FindReplaceDialog dlg = new FindReplaceDialog(Editor, this);
-            dlg.Show(this);
+            ShowFindReplace(false);
+        }
+
+        void ShowFindReplace(bool showReplace)
+        {
+            if (_findDlg == null || _findDlg.IsDisposed)
+            {
+                _findDlg = new FindReplaceDialog(Editor, this);
+                _findDlg.FormClosed += delegate(object s, FormClosedEventArgs e) { _findDlg = null; };
+            }
+            _findDlg.SetShowReplace(showReplace);
+            _findDlg.Hide();
+            _findDlg.Show(this);
+            _findDlg.Focus();
+            _findDlg.WindowState = FormWindowState.Normal;
+            _findDlg.ShowInTaskbar = false;
         }
 
         void ShowHelp()
