@@ -1,0 +1,14 @@
+html,body{height:100%;margin:0;overflow:hidden}
+.layout{display:flex;height:100vh}
+.outline{width:250px;min-width:250px;background:#f8f9fa;border-right:1px solid #e9ecef;padding:16px 0;overflow-y:auto;transition:width .2s,min-width .2s,padding .2s}
+.outline.collapsed{width:0;min-width:0;padding:0;overflow:hidden;border-right:none}
+.outline-header{font-size:14px;font-weight:600;color:#495057;padding:8px 16px;margin-bottom:8px}
+.outline-item{padding:6px 16px;cursor:pointer;border-radius:4px;margin:2px 8px;transition:background 0.2s;font-size:13px;color:#495057;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.outline-item:hover{background:#e9ecef}
+.outline-item.level-1{font-weight:600;color:#212529}
+.outline-item.level-2{color:#495057}
+.outline-item.level-3{color:#6c757d}
+.content{flex:1;min-width:0;padding:0 20px;overflow-y:auto}
+.outline-handle{width:12px;min-width:12px;background:transparent;position:relative;flex-shrink:0;border-left:1px solid #e9ecef}
+.outline-toggle{position:absolute;top:12px;left:50%;transform:translateX(-50%);cursor:pointer;font-size:9px;color:#999;user-select:none;line-height:1;padding:4px 2px;border-radius:3px;background:#fff;border:1px solid #ddd;transition:all .15s}
+.outline-toggle:hover{color:#333;background:#f0f0f0;border-color:#ccc}

@@ -56,7 +56,7 @@ namespace MarkdownViewer.E2E
                 TestPreviewMode();
                 TestHelpDialog();
                 TestFindDialog();
-                TestDarkMode();
+                TestOpenAndPreview();
             }
             catch (Exception ex)
             {
@@ -301,7 +301,7 @@ namespace MarkdownViewer.E2E
             }
         }
 
-        static void TestDarkMode()
+        static void TestOpenAndPreview()
         {
             SendKeys("^n");
             Thread.Sleep(300);

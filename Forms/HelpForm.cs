@@ -1,8 +1,8 @@
 using System;
+using System.IO;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2;
 using Microsoft.Web.WebView2.WinForms;
-using MarkdownViewer.Resources;
 
 namespace MarkdownViewer.Forms
 {
@@ -30,7 +30,9 @@ namespace MarkdownViewer.Forms
                     await web.EnsureCoreWebView2Async();
                     web.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
                     web.CoreWebView2.Settings.AreDevToolsEnabled = false;
-                    web.NavigateToString(HelpContent.Html);
+                    string helpPath = Path.Combine(Application.StartupPath, "Resources", "help.html");
+                    string helpHtml = File.Exists(helpPath) ? File.ReadAllText(helpPath) : "<html><body>帮助文件不存在</body></html>";
+                    web.NavigateToString(helpHtml);
                 }
                 catch (Exception ex)
                 {

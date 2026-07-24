@@ -39,13 +39,15 @@ MarkdownViewer/
 ├── Hooks/            # 系统钩子
 │   ├── DropHook.cs        # 拖放文件钩子
 │   └── KeyHook.cs         # 键盘钩子
-├── Resources/        # 资源
-│   └── HelpContent.cs     # 帮助内容 HTML
-├── Scripts/          # 前端脚本
-│   ├── highlight.min.js   # 语法高亮库
-│   ├── hljs-github.min.css # 浅色主题
-│   ├── hljs-github-dark.min.css # 深色主题
-│   └── mermaid.min.js     # Mermaid 图表库
+├── Resources/        # 预览资源
+│   ├── preview.html       # 预览 HTML 模板
+│   ├── css/
+│   │   ├── light.css      # 浅色主题 CSS
+│   │   └── outline.css    # 大纲面板 CSS
+│   └── js/
+│       ├── preview.js     # 预览脚本
+│       ├── highlight.min.js # 语法高亮库
+│       └── mermaid.min.js     # Mermaid 图表库
 ├── E2E/               # E2E 测试
 │   └── E2ETests.cs        # E2E 测试用例
 ├── lib/               # 第三方库
@@ -53,7 +55,8 @@ MarkdownViewer/
 │   ├── System.Memory.dll
 │   ├── System.Buffers.dll
 │   ├── System.Numerics.Vectors.dll
-│   └── System.Runtime.CompilerServices.Unsafe.dll
+│   ├── System.Runtime.CompilerServices.Unsafe.dll
+│   └── WebView2Loader.dll
 ├── Test.cs           # 单元测试
 ├── build.bat         # 构建脚本
 └── app.ico          # 程序图标
@@ -64,14 +67,16 @@ MarkdownViewer/
 | 模块 | 职责 |
 |------|------|
 | Program | 应用入口，初始化 |
-| MainForm | 主窗体，UI 事件处理 |
-| HelpForm | 帮助对话框 |
-| FindReplaceDialog | 查找替换对话框 |
-| MarkdownParser | Markdown 文本解析为 HTML |
+| MainForm | 主窗体，UI 事件处理，文件打开/保存/预览 |
+| HelpForm | 帮助对话框（WebView2 渲染） |
+| FindReplaceDialog | 查找替换对话框（非模态，ESC 关闭） |
+| MarkdownParser | Markdown 文本解析为 HTML（Markdig） |
 | RecentFiles | 最近文件列表管理（注册表） |
 | DropHook | 全局消息钩子，拦截拖放文件 |
+| KeyHook | 全局键盘钩子，拦截快捷键冲突 |
 | Icons | 工具栏图标生成 |
 | NativeMethods | Win32 API P/Invoke 封装 |
+| E2ETests | 端到端 UI 自动化测试 |
 
 ### 2.3 状态管理
 
@@ -81,6 +86,8 @@ MarkdownViewer/
 | IsDirty | bool | 是否有未保存修改 |
 | IsPreviewMode | bool | 当前是否为预览模式 |
 | ZoomLevel | float | 缩放级别 (50-200) |
+| cachedHtml | string | 预览 HTML 缓存 |
+| cachedText | string | 缓存对应的文本 |
 
 ## 3. UI 设计
 
@@ -111,15 +118,23 @@ MarkdownViewer/
 | 状态栏 | StatusStrip | SpringLayout 分布，显示字数/词数/编码/缩放 |
 | 缩放控制 | ToolStripButton | +/- 按钮控制预览缩放 (50%-200%) |
 
-### 3.3 颜色主题
+### 3.3 预览模板化
 
-| 元素 | 颜色 | 说明 |
-|------|------|------|
-| 主色调 | #407040 | 绿色，Markdown 主题色 |
-| 标题 | #333 | 深灰色 |
-| 边框 | #ddd | 浅灰色分隔线 |
-| 背景 | #fff | 白色 |
-| 代码背景 | #f5f5f5 | 浅灰背景 |
+预览 HTML 使用模板文件 + 占位符替换方式构建：
+
+| 文件 | 说明 |
+|------|------|
+| `Resources/preview.html` | HTML 模板，包含占位符 |
+| `Resources/css/light.css` | 浅色主题 CSS |
+| `Resources/css/outline.css` | 大纲面板 CSS |
+| `Resources/js/preview.js` | 预览脚本 |
+| `Resources/js/highlight.min.js` | 语法高亮库 |
+| `Resources/js/mermaid.min.js` | Mermaid 图表库 |
+
+**占位符**:
+- `{{HEADINGS_DATA}}` - 标题数据 JSON
+- `{{BODY_CONTENT}}` - 正文 HTML
+- `{{OUTLINE_CLASS}}` - 大纲面板显示/隐藏 class
 
 ## 4. Markdown 解析器设计
 
@@ -208,9 +223,13 @@ WebBrowser 是 ActiveX 控件，会拦截 `WM_DROPFILES` 消息，导致拖放�
 
 FindReplaceDialog 支持：
 - 查找下一个
+- 查找上一个
 - 替换
 - 全部替换
 - 区分大小写选项
+- 非模态对话框
+- ESC 键关闭
+- 多实例支持（每个编辑器独立实例）
 
 ## 10. 性能优化
 
@@ -221,8 +240,9 @@ FindReplaceDialog 支持：
 
 ### 10.2 缓存机制
 
-- Markdown 解析结果直接传递给 WebBrowser，不做额外缓存
+- Markdown 解析结果缓存（`cachedHtml` + `cachedText`），文本不变时不重新解析
 - 解析过程使用 StringBuilder 避免字符串拼接开销
+- 图标静态缓存（`editIcon` / `eyeIcon`）
 
 ### 10.3 延迟加载
 
@@ -244,7 +264,7 @@ FindReplaceDialog 支持：
 
 位于 `Test.cs`，使用 C# 控制台程序实现，测试 MarkdownParser 的解析功能。
 
-**测试用例 (28项)**:
+**测试用例 (30 项)**:
 - 空字符串处理
 - 标题 (H1-H6)
 - 行内格式 (粗体、斜体、粗斜体、删除线、行内代码)
@@ -257,7 +277,7 @@ FindReplaceDialog 支持：
 
 位于 `E2E/` 目录，使用 Win32 API 实现 UI 自动化测试。
 
-**测试用例 (10项)**:
+**测试用例 (11 项)**:
 - TestLaunchApp - 应用启动
 - TestWindowTitle - 窗口标题验证
 - TestMenuBar - 菜单栏存在
@@ -267,6 +287,8 @@ FindReplaceDialog 支持：
 - TestHelpDialog - F1 打开帮助
 - TestFindDialog - Ctrl+F 打开查找
 - TestPreviewLoading - 预览加载测试
+- TestOutlinePanel - 大纲面板测试
+- TestFileTypeDetection - 文件类型检测
 
 **技术实现**:
 - `FindWindow` / `FindWindowEx` - 窗口查找
@@ -287,14 +309,15 @@ FindReplaceDialog 支持：
 - [x] RichTextBox 回车换行
 - [x] 快捷键支持
 - [x] 最近文件列表
-- [x] 查找替换功能
-- [x] 单元测试 (28项)
-- [x] E2E 测试 (11项)
+- [x] 查找替换功能 (上一个/下一个、替换、全部替换、区分大小写、非模态、ESC 关闭)
+- [x] 单元测试 (30 项)
+- [x] E2E 测试 (11 项)
 - [x] 关联文件图标
 - [x] Ctrl+滚轮缩放状态栏同步
 - [x] Markdown 解析缓存优化
-- [x] 深色模式切换
-- [x] 查找替换改进 (上一个/下一个、非模态、ESC关闭)
+- [x] 预览 HTML 模板化重构
+- [x] 删除深色模式切换功能
+- [x] 删除主题切换功能
 - [x] 窗口焦点管理 (SetForegroundWindow)
 - [x] JavaScript 错误捕获和日志记录
 - [x] 升级到 .NET Framework 4.8
@@ -308,7 +331,10 @@ FindReplaceDialog 支持：
 - [x] 修复 WebView2 快捷键冲突 (全局钩子)
 - [x] 窗口标题显示当前模式 [编辑]/[预览]
 - [x] DLL 移到 lib/ 目录
-- [x] 代码块语法高亮 (highlight.js, 190+ 语言, 浅色/深色主题)
+- [x] 代码块语法高亮 (highlight.js, 190+ 语言)
+- [x] 大纲面板导航
+- [x] 文件类型检测 (md/txt/image/pdf)
+- [x] 拖放文件类型限制 (md/txt)
 
 ## 14. 未来改进方向
 

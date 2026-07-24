@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Drawing;
 using Microsoft.Win32;
@@ -8,7 +11,6 @@ using Microsoft.Web.WebView2;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using MarkdownViewer.Core;
-using MarkdownViewer.Resources;
 using MarkdownViewer.Hooks;
 
 namespace MarkdownViewer.Forms
@@ -19,6 +21,7 @@ namespace MarkdownViewer.Forms
         RichTextBox Editor;
         WebView2 Preview;
         ToolStripButton ViewToggleBtn;
+        ToolStripMenuItem OutlineMenuItem;
         FindReplaceDialog _findDlg;
         StatusStrip StatusBar;
         ToolStripStatusLabel StatusLabel;
@@ -31,7 +34,6 @@ namespace MarkdownViewer.Forms
         Image eyeIcon;
         string cachedHtml = null;
         string cachedText = null;
-        bool IsDarkMode = false;
         System.Windows.Forms.Timer previewDebounceTimer;
         public bool EnableDebugLog = false;
         enum FileType { Unknown, Markdown, Text, Image, Pdf }
@@ -82,6 +84,8 @@ namespace MarkdownViewer.Forms
             previewDebounceTimer.Interval = 300;
             previewDebounceTimer.Tick += OnPreviewDebounceTick;
 
+            CacheManager.StartCleanupTimer();
+
             this.Shown += OnFormShown;
         }
 
@@ -93,7 +97,7 @@ namespace MarkdownViewer.Forms
                 Preview.CoreWebView2.Settings.IsScriptEnabled = true;
                 Preview.CoreWebView2.Settings.AreDefaultScriptDialogsEnabled = false;
                 Preview.CoreWebView2.Settings.IsWebMessageEnabled = true;
-                Preview.CoreWebView2.Settings.AreDevToolsEnabled = false;
+                Preview.CoreWebView2.Settings.AreDevToolsEnabled = true;
                 Preview.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 Preview.CoreWebView2.AddHostObjectToScript("app", this);
                 Preview.CoreWebView2.SetVirtualHostNameToFolderMapping(
@@ -146,6 +150,11 @@ namespace MarkdownViewer.Forms
                         }
                     }));
                 }
+                else if (msg.StartsWith("OUTLINE:"))
+                {
+                    string state = msg.Substring(8);
+                    this.BeginInvoke(new Action(() => { OutlineMenuItem.Checked = (state == "visible"); }));
+                }
                 else if (msg == "MERMAID_OK" || msg == "MERMAID_SKIP")
                 {
                     Log("JS_MESSAGE", "Mermaid ready=" + msg);
@@ -190,7 +199,6 @@ namespace MarkdownViewer.Forms
                 }
             }
         }
-
 
         public void ReportScriptError(string message, string url, int line)
         {
@@ -238,8 +246,8 @@ namespace MarkdownViewer.Forms
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
 
             ToolStripMenuItem assocMenu = new ToolStripMenuItem("关联(&S)");
-            assocMenu.DropDownItems.Add("注册.md关联", null, delegate(object s, EventArgs e) { RegisterAssoc(true); });
-            assocMenu.DropDownItems.Add("取消.md关联", null, delegate(object s, EventArgs e) { RegisterAssoc(false); });
+            assocMenu.DropDownItems.Add("注册.md 关联", null, delegate(object s, EventArgs e) { RegisterAssoc(true); });
+            assocMenu.DropDownItems.Add("取消.md 关联", null, delegate(object s, EventArgs e) { RegisterAssoc(false); });
             fileMenu.DropDownItems.Add(assocMenu);
 
             fileMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -250,8 +258,12 @@ namespace MarkdownViewer.Forms
             viewMenu.DropDownItems.Add("编辑模式(&E)\tCtrl+E", null, delegate(object s, EventArgs e) { SwitchToEdit(); });
             viewMenu.DropDownItems.Add("预览模式(&P)\tCtrl+P", null, delegate(object s, EventArgs e) { SwitchToPreview(); });
             viewMenu.DropDownItems.Add(new ToolStripSeparator());
-            viewMenu.DropDownItems.Add("深色模式(&D)", null, delegate(object s, EventArgs e) { ToggleDarkMode(); });
             viewMenu.DropDownItems.Add("查找替换(&F)...\tCtrl+F", null, delegate(object s, EventArgs e) { ShowFindReplace(); });
+            viewMenu.DropDownItems.Add(new ToolStripSeparator());
+            OutlineMenuItem = new ToolStripMenuItem("大纲面板(&O)");
+            OutlineMenuItem.Checked = true;
+            OutlineMenuItem.Click += delegate(object s, EventArgs e) { ToggleOutline(); };
+            viewMenu.DropDownItems.Add(OutlineMenuItem);
             menu.Items.Add(viewMenu);
 
             ToolStripMenuItem helpMenu = new ToolStripMenuItem("帮助(&H)");
@@ -350,31 +362,6 @@ namespace MarkdownViewer.Forms
             }
         }
 
-        void ToggleDarkMode()
-        {
-            IsDarkMode = !IsDarkMode;
-            ApplyTheme();
-        }
-
-        void ApplyTheme()
-        {
-            if (IsDarkMode)
-            {
-                Editor.BackColor = Color.FromArgb(30, 30, 30);
-                Editor.ForeColor = Color.FromArgb(220, 220, 220);
-                BackColor = Color.FromArgb(45, 45, 45);
-            }
-            else
-            {
-                Editor.BackColor = Color.White;
-                Editor.ForeColor = Color.Black;
-                BackColor = SystemColors.Control;
-            }
-            cachedHtml = null;
-            cachedText = null;
-            if (IsPreviewMode) RefreshPreview();
-        }
-
         void OnDragEnter(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent(DataFormats.FileDrop)) e.Effect = DragDropEffects.Copy;
@@ -432,6 +419,7 @@ namespace MarkdownViewer.Forms
             Text = "无标题 " + mode + " - Markdown Viewer";
             IsDirty = false;
             if (IsPreviewMode) RefreshPreview();
+            SetOutline(true);
         }
 
         void OpenFileDialog()
@@ -465,10 +453,11 @@ namespace MarkdownViewer.Forms
                 RecentFiles.Add(CurrentFile);
                 UpdateStatusBar();
                 UpdateEditState();
+                SetOutline(currentFileType == FileType.Markdown);
             }
             catch (Exception ex)
             {
-                MessageBox.Show("打开文件失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("打开文件失败： " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -481,8 +470,20 @@ namespace MarkdownViewer.Forms
             }
             else if (currentFileType == FileType.Markdown)
             {
-                Editor.Text = File.ReadAllText(path);
-                if (IsPreviewMode) RefreshPreview();
+                string fileHash = CacheManager.ComputeFileHash(path);
+                FileDescription description = CacheManager.GetFileDescription(path);
+                CacheEntry cache = CacheManager.ReadCache(fileHash, description);
+                
+                if (cache != null)
+                {
+                    cachedHtml = cache.Html;
+                    cachedText = cache.Html;
+                }
+                else
+                {
+                    Editor.Text = File.ReadAllText(path);
+                    if (IsPreviewMode) RefreshPreview();
+                }
             }
             else if (currentFileType == FileType.Image)
             {
@@ -574,7 +575,7 @@ namespace MarkdownViewer.Forms
             }
             catch (Exception ex)
             {
-                MessageBox.Show("保存文件失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("保存文件失败： " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -639,6 +640,7 @@ namespace MarkdownViewer.Forms
             string name = string.IsNullOrEmpty(CurrentFile) ? "无标题" : System.IO.Path.GetFileName(CurrentFile);
             Text = name + " [预览] - Markdown Viewer";
             RefreshPreviewForCurrentFile();
+            OutlineMenuItem.Checked = (currentFileType == FileType.Markdown);
             if (wasFindVisible && !string.IsNullOrEmpty(findText))
             {
                 if (Preview.CoreWebView2 != null)
@@ -673,6 +675,20 @@ namespace MarkdownViewer.Forms
             return "'" + s + "'";
         }
 
+        void SetOutline(bool show)
+        {
+            OutlineMenuItem.Checked = show;
+            if (Preview.CoreWebView2 == null) return;
+            try { Preview.CoreWebView2.ExecuteScriptAsync(show ? "setOutline('visible')" : "setOutline('hidden')"); } catch { }
+        }
+
+        void ToggleOutline()
+        {
+            if (Preview.CoreWebView2 == null) return;
+            Preview.CoreWebView2.ExecuteScriptAsync("toggleOutline()");
+            OutlineMenuItem.Checked = !OutlineMenuItem.Checked;
+        }
+
         void ToggleView()
         {
             if (IsPreviewMode) SwitchToEdit();
@@ -682,18 +698,27 @@ namespace MarkdownViewer.Forms
         void RefreshPreview()
         {
             Log("PREVIEW", "RefreshPreview called, IsPreviewMode=" + IsPreviewMode + ", CoreWebView2=" + (Preview.CoreWebView2 != null));
-            if (IsPreviewMode && Preview.CoreWebView2 != null)
+            if (IsPreviewMode && Preview.CoreWebView2 != null && currentFileType == FileType.Markdown)
             {
                 string text = Editor.Text;
                 Log("PREVIEW", "TextLength=" + text.Length);
-                string key = text + (IsDarkMode ? "|dark" : "|light");
-                if (cachedHtml == null || cachedText != key)
+                if (cachedHtml == null || cachedText != text)
                 {
-                    cachedText = key;
-                    var result = MarkdownParser.Parse(text, IsDarkMode);
+                    cachedText = text;
+                    var result = MarkdownParser.Parse(text);
                     Log("PREVIEW", "MarkdownParser output length=" + result.Html.Length + ", HasMermaid=" + result.HasMermaid);
-                    cachedHtml = BuildPreviewHtml(result.Html, result.HasMermaid);
+                    cachedHtml = BuildPreviewHtml(result.Html, result.Headings, currentFileType == FileType.Markdown);
                     Log("PREVIEW", "Final HTML length=" + cachedHtml.Length);
+                    
+                    if (!string.IsNullOrEmpty(CurrentFile) && currentFileType == FileType.Markdown)
+                    {
+                        string fileHash = CacheManager.ComputeFileHash(CurrentFile);
+                        FileDescription description = CacheManager.GetFileDescription(CurrentFile);
+                        if (!string.IsNullOrEmpty(fileHash))
+                        {
+                            CacheManager.WriteCache(fileHash, description, text, cachedHtml);
+                        }
+                    }
                 }
                 try
                 {
@@ -707,117 +732,62 @@ namespace MarkdownViewer.Forms
             }
             else
             {
-                Log("PREVIEW", "RefreshPreview skipped: IsPreviewMode=" + IsPreviewMode + ", CoreWebView2=" + (Preview.CoreWebView2 != null));
+                Log("PREVIEW", "RefreshPreview skipped: IsPreviewMode=" + IsPreviewMode + ", CoreWebView2=" + (Preview.CoreWebView2 != null) + ", FileType=" + currentFileType);
             }
         }
 
-        string BuildPreviewHtml(string fullHtml, bool hasMermaid)
+        static string _previewTemplate = null;
+
+        string BuildPreviewHtml(string fullHtml, List<TitleItem> headings, bool showOutline = true)
         {
+            if (_previewTemplate == null)
+            {
+                string templatePath = Path.Combine(Application.StartupPath, "Resources", "preview.html");
+                _previewTemplate = File.Exists(templatePath) ? File.ReadAllText(templatePath) : "";
+            }
             string bodyContent = ExtractBody(fullHtml);
-            string css = IsDarkMode ? CSS_DARK : CSS_LIGHT;
-            string highlightScript = "<script src=\"https://appassets.local/highlight.min.js\"></script>";
-            string hljsInit = @"
-    try {
-        if (typeof hljs !== 'undefined') {
-            document.querySelectorAll('pre code').forEach(function(block) {
-                hljs.highlightElement(block);
-            });
+            StringBuilder sb = new StringBuilder(_previewTemplate);
+            sb.Replace("{{HEADINGS_DATA}}", BuildHeadingsJson(headings));
+            sb.Replace("{{BODY_CONTENT}}", bodyContent);
+            sb.Replace("{{OUTLINE_CLASS}}", showOutline ? "" : " collapsed");
+            return sb.ToString();
         }
-    } catch(ex) {}";
-            if (hasMermaid)
+
+        string BuildHeadingsJson(List<TitleItem> headings)
+        {
+            if (headings == null) return "[]";
+            StringBuilder j = new StringBuilder("[");
+            for (int i = 0; i < headings.Count; i++)
             {
-                string mermaidScript = "<script src=\"https://appassets.local/mermaid.min.js\"></script>";
-                string theme = IsDarkMode ? "dark" : "default";
-                string initScript = @"
-<script>
-window.onerror = function(msg, url, line) { try { window.chrome.webview.postMessage('JS_ERROR:' + msg); } catch(e) {} return true; };
-document.addEventListener('DOMContentLoaded', function() {
-" + hljsInit + @"
-    var nodes = document.querySelectorAll('.mermaid[data-b64]');
-    for (var i = 0; i < nodes.length; i++) {
-        try {
-            var b64 = nodes[i].getAttribute('data-b64');
-            var text = decodeURIComponent(escape(atob(b64)));
-            nodes[i].textContent = text;
-        } catch(e) {
-            window.chrome.webview.postMessage('MERMAID_DECODE_ERR:' + e.message);
-        }
-    }
-    if (typeof mermaid !== 'undefined') {
-        mermaid.initialize({ startOnLoad: false, theme: '" + theme + @"', securityLevel: 'loose' });
-        if (typeof mermaid.run === 'function') {
-            mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).then(function() {
-                window.chrome.webview.postMessage('MERMAID_OK');
-            }).catch(function(e) {
-                window.chrome.webview.postMessage('MERMAID_ERR:' + e.message);
-            });
-        } else if (typeof mermaid.init === 'function') {
-            mermaid.init({ nodes: document.querySelectorAll('.mermaid') });
-            window.chrome.webview.postMessage('MERMAID_OK');
-        } else {
-            window.chrome.webview.postMessage('MERMAID_ERR:no render function');
-        }
-    } else {
-        window.chrome.webview.postMessage('MERMAID_SKIP');
-    }
-    window.chrome.webview.postMessage('RENDERED');
-});
-document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey) {
-        var key = e.key.toUpperCase();
-        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'S') {
-            e.preventDefault();
-            window.chrome.webview.postMessage('KEY_' + key);
-        }
-    }
-});
-</script>";
-                return @"<!DOCTYPE html>
-<html>
-<head>
-<meta charset='utf-8'>
-" + css + @"
-" + highlightScript + @"
-" + mermaidScript + @"
-" + initScript + @"
-</head>
-<body>
-" + bodyContent + @"
-</body>
-</html>";
+                if (i > 0) j.Append(",");
+                j.Append("{\"level\":").Append(headings[i].Level);
+                j.Append(",\"text\":").Append(JsonEscape(headings[i].Text));
+                j.Append(",\"anchor\":").Append(JsonEscape(headings[i].Anchor));
+                j.Append("}");
             }
-            else
+            j.Append("]");
+            return j.ToString();
+        }
+
+        string JsonEscape(string s)
+        {
+            if (s == null) return "\"\"";
+            StringBuilder sb = new StringBuilder();
+            sb.Append('"');
+            foreach (char c in s)
             {
-                string initScript = @"
-<script>
-window.onerror = function(msg, url, line) { try { window.chrome.webview.postMessage('JS_ERROR:' + msg); } catch(e) {} return true; };
-document.addEventListener('DOMContentLoaded', function() {
-" + hljsInit + @"
-    window.chrome.webview.postMessage('RENDERED');
-});
-document.addEventListener('keydown', function(e) {
-    if (e.ctrlKey) {
-        var key = e.key.toUpperCase();
-        if (key === 'N' || key === 'O' || key === 'P' || key === 'E' || key === 'S') {
-            e.preventDefault();
-            window.chrome.webview.postMessage('KEY_' + key);
-        }
-    }
-});
-</script>";
-                return @"<!DOCTYPE html>
-<html>
-<head>
-<meta charset='utf-8'>
-" + css + @"
-" + highlightScript + @"
-" + initScript + @"
-</head>
-<body>
-" + bodyContent + @"
-</body>
-</html>";
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default: sb.Append(c); break;
+                }
             }
+            sb.Append('"');
+            return sb.ToString();
         }
 
         string ExtractBody(string html)
@@ -830,52 +800,6 @@ document.addEventListener('keydown', function(e) {
             }
             return html;
         }
-
-        static readonly string CSS_LIGHT = @"<style>
-body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;padding:20px;font-size:15px;line-height:1.6;background:#fff;color:#333;overflow-x:hidden;word-wrap:break-word;max-width:100%}
-h1{font-size:26px;color:#333;border-bottom:2px solid #407040;padding-bottom:8px}
-h2{font-size:22px;color:#444;border-bottom:1px solid #ddd;padding-bottom:5px}
-h3{font-size:18px;color:#555}
-p{margin:10px 0}
-code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:Consolas}
-pre{background:#f6f8fa;padding:15px;border-radius:5px;border:1px solid #ddd;overflow-x:auto}
-pre code{background:none;padding:0;border:none}
-blockquote{border-left:4px solid #407040;margin:15px 0;padding:10px 15px;background:#f9f9f9;color:#555}
-a{color:#4070a0}
-ul,ol{margin:10px 0;padding-left:25px}
-li{margin:5px 0}
-hr{border:none;border-top:1px solid #ddd;margin:20px 0}
-table{border-collapse:collapse;margin:15px 0}
-table,th,td{border:1px solid #ddd;padding:8px 12px}
-th{background:#f5f5f5;font-weight:600}
-tr:nth-child(even){background:#fafafa}
-del{color:#999}
-.mermaid{background:#fff;text-align:center;margin:15px 0}
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#24292e;background:#f6f8fa}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
-</style>";
-
-        static readonly string CSS_DARK = @"<style>
-body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;padding:20px;font-size:15px;line-height:1.6;background:#1e1e1e;color:#d4d4d4;overflow-x:hidden;word-wrap:break-word;max-width:100%}
-h1{font-size:26px;color:#fff;border-bottom:2px solid #4caf50;padding-bottom:8px}
-h2{font-size:22px;color:#ccc;border-bottom:1px solid #444;padding-bottom:5px}
-h3{font-size:18px;color:#aaa}
-p{margin:10px 0}
-code{background:#2d2d2d;padding:2px 6px;border-radius:3px;font-family:Consolas;color:#ce9178}
-pre{background:#1e1e1e;padding:15px;border-radius:5px;border:1px solid #444;overflow-x:auto}
-pre code{background:none;padding:0;border:none;color:#d4d4d4}
-blockquote{border-left:4px solid #4caf50;margin:15px 0;padding:10px 15px;background:#2d2d2d;color:#aaa}
-a{color:#6db3f2}
-ul,ol{margin:10px 0;padding-left:25px}
-li{margin:5px 0}
-hr{border:none;border-top:1px solid #444;margin:20px 0}
-table{border-collapse:collapse;margin:15px 0}
-table,th,td{border:1px solid #444;padding:8px 12px}
-th{background:#2d2d2d;font-weight:600}
-tr:nth-child(even){background:#252526}
-del{color:#6b6b6b}
-.mermaid{background:#2d2d2d;text-align:center;margin:15px 0}
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#c9d1d9;background:#1e1e1e}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}
-</style>";
 
         void Log(string category, string message)
         {
@@ -906,7 +830,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             int chars = text.Length;
             int words = string.IsNullOrEmpty(text.Trim()) ? 0 : Regex.Split(text.Trim(), @"\s+").Length;
             double sizeKb = chars / 1024.0;
-            StatusLabel.Text = string.Format("字数: {0}  词数: {1}  大小: {2:F1} KB", chars, words, sizeKb);
+            StatusLabel.Text = string.Format("字数：{0}  词数：{1}  大小：{2:F1} KB", chars, words, sizeKb);
         }
 
         void Zoom(int delta)
@@ -934,7 +858,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
         bool PromptSave()
         {
             if (!IsDirty) return true;
-            DialogResult result = MessageBox.Show("是否保存更改?", "Markdown Viewer", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+            DialogResult result = MessageBox.Show("是否保存更改？", "Markdown Viewer", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
             if (result == DialogResult.Yes) { SaveFile(); return true; }
             return result != DialogResult.Cancel;
         }
@@ -1014,7 +938,7 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             }
             catch (Exception ex)
             {
-                MessageBox.Show("操作失败: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("操作失败： " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
     }

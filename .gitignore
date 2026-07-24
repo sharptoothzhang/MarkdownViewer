@@ -6,6 +6,7 @@ Obj/
 # Test executables
 Test.exe
 E2ETest.exe
+QuickTest.exe
 
 # IDE
 .vs/

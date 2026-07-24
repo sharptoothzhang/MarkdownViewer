@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
 using Markdig;
@@ -9,56 +10,19 @@ namespace MarkdownViewer.Core
     {
         public string Html;
         public bool HasMermaid;
+        public List<TitleItem> Headings;
+    }
+
+    public class TitleItem
+    {
+        public int Level;
+        public string Text;
+        public string Anchor;
+        public int LineNumber;
     }
 
     static class MarkdownParser
     {
-        static readonly string CSS_LIGHT = @"<style>
-body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;padding:20px;font-size:15px;line-height:1.8;background:#fff;color:#333;overflow-x:hidden;word-wrap:break-word;max-width:100%}
-h1{font-size:26px;color:#333;border-bottom:2px solid #407040;padding-bottom:8px}
-h2{font-size:22px;color:#444;border-bottom:1px solid #ddd;padding-bottom:5px}
-h3{font-size:18px;color:#555}
-p{margin:10px 0}
-code{background:#f0f0f0;padding:2px 6px;border-radius:3px;font-family:Consolas}
-pre{background:#f6f8fa;padding:15px;border-radius:5px;border:1px solid #ddd;overflow-x:auto}
-pre code{background:none;padding:0;border:none}
-blockquote{border-left:4px solid #407040;margin:15px 0;padding:10px 15px;background:#f9f9f9;color:#555}
-a{color:#4070a0}
-ul,ol{margin:10px 0;padding-left:25px}
-li{margin:5px 0}
-hr{border:none;border-top:1px solid #ddd;margin:20px 0}
-table{border-collapse:collapse;margin:15px 0}
-table,th,td{border:1px solid #ddd;padding:8px 12px}
-th{background:#f5f5f5;font-weight:600}
-tr:nth-child(even){background:#fafafa}
-del{color:#999}
-.mermaid{background:#fff;text-align:center;margin:15px 0}
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#24292e;background:#f6f8fa}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#d73a49}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#6f42c1}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#005cc5}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#032f62}.hljs-built_in,.hljs-symbol{color:#e36209}.hljs-code,.hljs-comment,.hljs-formula{color:#6a737d}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#22863a}.hljs-subst{color:#24292e}.hljs-section{color:#005cc5;font-weight:700}.hljs-bullet{color:#735c0f}.hljs-emphasis{color:#24292e;font-style:italic}.hljs-strong{color:#24292e;font-weight:700}.hljs-addition{color:#22863a;background-color:#f0fff4}.hljs-deletion{color:#b31d28;background-color:#ffeef0}
-</style>";
-
-        static readonly string CSS_DARK = @"<style>
-body{font-family:'Segoe UI','Microsoft YaHei',sans-serif;padding:20px;font-size:15px;line-height:1.8;background:#1e1e1e;color:#d4d4d4;overflow-x:hidden;word-wrap:break-word;max-width:100%}
-h1{font-size:26px;color:#fff;border-bottom:2px solid #4caf50;padding-bottom:8px}
-h2{font-size:22px;color:#ccc;border-bottom:1px solid #444;padding-bottom:5px}
-h3{font-size:18px;color:#aaa}
-p{margin:10px 0}
-code{background:#2d2d2d;padding:2px 6px;border-radius:3px;font-family:Consolas;color:#ce9178}
-pre{background:#1e1e1e;padding:15px;border-radius:5px;border:1px solid #444;overflow-x:auto}
-pre code{background:none;padding:0;border:none;color:#d4d4d4}
-blockquote{border-left:4px solid #4caf50;margin:15px 0;padding:10px 15px;background:#2d2d2d;color:#aaa}
-a{color:#6db3f2}
-ul,ol{margin:10px 0;padding-left:25px}
-li{margin:5px 0}
-hr{border:none;border-top:1px solid #444;margin:20px 0}
-table{border-collapse:collapse;margin:15px 0}
-table,th,td{border:1px solid #444;padding:8px 12px}
-th{background:#2d2d2d;font-weight:600}
-tr:nth-child(even){background:#252526}
-del{color:#6b6b6b}
-.mermaid{background:#2d2d2d;text-align:center;margin:15px 0}
-pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5px}.hljs{color:#c9d1d9;background:#1e1e1e}.hljs-doctag,.hljs-keyword,.hljs-meta .hljs-keyword,.hljs-template-tag,.hljs-template-variable,.hljs-type,.hljs-variable.language_{color:#ff7b72}.hljs-title,.hljs-title.class_,.hljs-title.class_.inherited__,.hljs-title.function_{color:#d2a8ff}.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-meta,.hljs-number,.hljs-operator,.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id,.hljs-variable{color:#79c0ff}.hljs-meta .hljs-string,.hljs-regexp,.hljs-string{color:#a5d6ff}.hljs-built_in,.hljs-symbol{color:#ffa657}.hljs-code,.hljs-comment,.hljs-formula{color:#8b949e}.hljs-name,.hljs-quote,.hljs-selector-pseudo,.hljs-selector-tag{color:#7ee787}.hljs-subst{color:#c9d1d9}.hljs-section{color:#1f6feb;font-weight:700}.hljs-bullet{color:#f2cc60}.hljs-emphasis{color:#c9d1d9;font-style:italic}.hljs-strong{color:#c9d1d9;font-weight:700}.hljs-addition{color:#aff5b4;background-color:#033a16}.hljs-deletion{color:#ffdcd7;background-color:#67060c}
-</style>";
-
         static MarkdownPipeline pipeline;
 
         static MarkdownParser()
@@ -70,24 +34,17 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
 
         public static ParseResult Parse(string markdown)
         {
-            return Parse(markdown, false);
-        }
-
-        public static ParseResult Parse(string markdown, bool isDark)
-        {
             if (string.IsNullOrEmpty(markdown))
             {
                 return new ParseResult
                 {
-                    Html = isDark
-                        ? "<html><head><meta charset='utf-8'><style>body{font-family:Segoe UI;padding:20px;background:#1e1e1e;color:#888}</style></head><body>无内容</body></html>"
-                        : "<html><head><meta charset='utf-8'><style>body{font-family:Segoe UI;padding:20px;color:#888}</style></head><body>无内容</body></html>",
-                    HasMermaid = false
+                    Html = "<body>无内容</body>",
+                    HasMermaid = false,
+                    Headings = new List<TitleItem>()
                 };
             }
 
-            markdown = EnsureTableBreak(markdown);
-            markdown = FixIncompleteBold(markdown);
+            markdown = PreprocessMarkdown(markdown);
 
             var mermaidBlocks = new System.Collections.Generic.List<string>();
             string processed = Regex.Replace(
@@ -117,13 +74,47 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
                     bodyHtml = bodyHtml.Replace("%%MERMAID_" + i + "%%", replacement);
             }
 
-            StringBuilder html = new StringBuilder();
-            html.Append("<html><head><meta charset='utf-8'>");
-            html.Append(isDark ? CSS_DARK : CSS_LIGHT);
-            html.Append("</head><body>");
-            html.Append(bodyHtml);
-            html.Append("</body></html>");
-            return new ParseResult { Html = html.ToString(), HasMermaid = mermaidBlocks.Count > 0 };
+            string fullHtml = "<body>" + bodyHtml + "</body>";
+            return new ParseResult
+            {
+                Html = fullHtml,
+                HasMermaid = mermaidBlocks.Count > 0,
+                Headings = ExtractHeadingsFromHtml(fullHtml)
+            };
+        }
+
+        public static List<TitleItem> ParseHeadings(string markdown)
+        {
+            if (string.IsNullOrEmpty(markdown)) return new List<TitleItem>();
+            var result = Parse(markdown);
+            return ExtractHeadingsFromHtml(result.Html);
+        }
+
+        static List<TitleItem> ExtractHeadingsFromHtml(string html)
+        {
+            var headings = new List<TitleItem>();
+            var matches = Regex.Matches(html, @"<h([1-6])([^>]*)>(.*?)</h\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                int level = int.Parse(m.Groups[1].Value);
+                string attrs = m.Groups[2].Value;
+                string text = Regex.Replace(m.Groups[3].Value, @"<[^>]+>", "");
+                string anchor = "";
+                System.Text.RegularExpressions.Match idMatch = Regex.Match(attrs, @"id=""([^""]*)""", RegexOptions.IgnoreCase);
+                if (idMatch.Success)
+                    anchor = idMatch.Groups[1].Value;
+                if (!string.IsNullOrEmpty(anchor))
+                    headings.Add(new TitleItem { Level = level, Text = text, Anchor = anchor, LineNumber = 0 });
+            }
+            return headings;
+        }
+
+        static string GenerateAnchor(string text)
+        {
+            string anchor = text.ToLower();
+            anchor = Regex.Replace(anchor, @"[^\w\u4e00-\u9fa5]+", "");
+            if (anchor.Length == 0) anchor = "section";
+            return anchor;
         }
 
         static string FixMermaidSyntax(string code)
@@ -154,26 +145,22 @@ pre code.hljs{display:block;overflow-x:auto;padding:1em}code.hljs{padding:3px 5p
             return string.Join("\n", lines);
         }
 
-        static string EnsureTableBreak(string markdown)
+        static string PreprocessMarkdown(string markdown)
         {
-            string[] lines = markdown.Split('\n');
-            StringBuilder result = new StringBuilder();
+            string fixedText = Regex.Replace(markdown, @"\*\*([^*]+)\*(?!\*)", "**$1**");
+            
+            string[] lines = fixedText.Split('\n');
+            StringBuilder result = new StringBuilder(fixedText.Length);
             for (int i = 0; i < lines.Length; i++)
             {
-                if (i > 0 && Regex.IsMatch(lines[i], @"^\s*\|") && !Regex.IsMatch(lines[i - 1], @"^\s*$|\s*\|"))
-                {
-                    result.Append("\n");
-                }
-                result.Append(lines[i]);
+                string line = lines[i];
+                if (i > 0 && line.TrimStart().StartsWith("|") && !string.IsNullOrWhiteSpace(lines[i - 1]) && !lines[i - 1].Contains("|"))
+                    result.Append('\n');
+                result.Append(line);
                 if (i < lines.Length - 1)
-                    result.Append("\n");
+                    result.Append('\n');
             }
             return result.ToString();
-        }
-
-        static string FixIncompleteBold(string markdown)
-        {
-            return Regex.Replace(markdown, @"\*\*([^*]+)\*(?!\*)", "**$1**");
         }
     }
 }

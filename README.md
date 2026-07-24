@@ -17,7 +17,7 @@
 - **快捷键** - 支持 Ctrl+N/O/S/E/P/F 等快捷键
 - **最近文件** - 快速访问最近打开的文件
 - **查找替换** - 支持查找和批量替换功能
-- **深色模式** - 支持深色/浅色主题切换
+- **大纲导航** - 支持文档大纲导航
 
 ## 支持的 Markdown 语法
 
@@ -31,7 +31,7 @@
 | 粗斜体 | ***text*** |
 | 删除线 | ~~text~~ |
 | 行内代码 | `code` |
-| 代码块 | \`\`\` |
+| 代码块 | ``` |
 | 引用 | > text |
 | 无序列表 | - * + |
 | 有序列表 | 1. |
@@ -79,9 +79,9 @@
 - 支持查找下一个、替换、全部替换
 
 ### 文件关联
-- 点击 **File → Associate .md → 注册.md关联**
+- 点击 **File → Associate .md → 注册.md 关联**
 - 关联后双击 .md 文件自动用本程序打开
-- 点击 **File → Associate .md → 取消.md关联** 可取消关联
+- 点击 **File → Associate .md → 取消.md 关联** 可取消关联
 
 ### 帮助
 - 点击 **Help → Usage**
@@ -100,7 +100,7 @@
 - **架构**: 多文件模块化设计
 - **拖放**: 全局消息钩子 (WM_DROPFILES)
 - **预览**: WebView2 (Edge 内核) + Mermaid.min.js
-- **Markdown解析**: Markdig 库 (CommonMark 标准)
+- **Markdown 解析**: Markdig 库 (CommonMark 标准)
 - **图表**: Mermaid 支持流程图、时序图等
 
 ## 项目结构
@@ -120,13 +120,15 @@ MarkdownViewer/
 ├── Hooks/            # 系统钩子
 │   ├── DropHook.cs        # 拖放文件钩子
 │   └── KeyHook.cs         # 键盘钩子
-├── Resources/        # 资源
-│   └── HelpContent.cs     # 帮助内容 HTML
-├── Scripts/          # 前端脚本
-│   ├── highlight.min.js   # 语法高亮库
-│   ├── hljs-github.min.css # 浅色主题
-│   ├── hljs-github-dark.min.css # 深色主题
-│   └── mermaid.min.js     # Mermaid 图表库
+├── Resources/        # 预览资源
+│   ├── preview.html       # 预览 HTML 模板
+│   ├── css/
+│   │   ├── light.css      # 浅色主题 CSS
+│   │   └── outline.css    # 大纲面板 CSS
+│   └── js/
+│       ├── preview.js     # 预览脚本
+│       ├── highlight.min.js # 语法高亮库
+│       └── mermaid.min.js     # Mermaid 图表库
 ├── E2E/              # E2E 测试
 │   └── E2ETests.cs        # E2E 测试用例
 ├── lib/              # 第三方库
@@ -134,15 +136,21 @@ MarkdownViewer/
 │   ├── System.Memory.dll
 │   ├── System.Buffers.dll
 │   ├── System.Numerics.Vectors.dll
-│   └── System.Runtime.CompilerServices.Unsafe.dll
+│   ├── System.Runtime.CompilerServices.Unsafe.dll
+│   └── WebView2Loader.dll
 ├── Release/          # 发布版本
 │   ├── MarkdownViewer.exe
 │   ├── app.ico
 │   ├── highlight.min.js
-│   ├── hljs-github.min.css
-│   ├── hljs-github-dark.min.css
-│   └── mermaid.min.js
-├── Test.cs           # 单元测试 (28项)
+│   ├── mermaid.min.js
+│   └── Resources/
+│       ├── preview.html
+│       ├── css/
+│       │   ├── light.css
+│       │   └── outline.css
+│       └── js/
+│           └── preview.js
+├── Test.cs           # 单元测试 (30 项)
 ├── build.bat         # 构建脚本
 ├── test.md           # 测试文件
 ├── mermaid_test.md   # Mermaid 测试文件
@@ -164,7 +172,7 @@ build.bat
 
 ### 单元测试
 
-编译并运行 MarkdownParser 单元测试（30项）：
+编译并运行 MarkdownParser 单元测试（30 项）：
 
 ```batch
 build_test.bat
@@ -173,7 +181,7 @@ Test.exe
 
 ### E2E 测试
 
-编译并运行端到端测试（10项），测试应用启动、菜单、窗口等 UI 功能：
+编译并运行端到端测试（11 项），测试应用启动、菜单、窗口等 UI 功能：
 
 ```batch
 build_e2e.bat
@@ -188,7 +196,7 @@ build.bat
 
 E2E 测试需要 .NET Framework 4.0+，使用 Win32 API 进行窗口操作和 UI 自动化测试。
 
-**E2E 测试用例 (10项)**:
+**E2E 测试用例 (11 项)**:
 - TestLaunchApp - 应用启动
 - TestWindowTitle - 窗口标题
 - TestMenuBar - 菜单栏
@@ -198,75 +206,5 @@ E2E 测试需要 .NET Framework 4.0+，使用 Win32 API 进行窗口操作和 UI
 - TestHelpDialog - 帮助对话框
 - TestFindDialog - 查找对话框
 - TestPreviewLoading - 预览加载测试
-
-## 版本历史
-
-### v1.7
-- 代码块语法高亮（highlight.js，支持 190+ 语言，浅色/深色主题）
-- 修复列表项后紧跟表格时表格无法被识别的问题（自动插入空行分隔）
-
-### v1.6
-- NavigateToString 替代临时文件方案（不再生成 _preview.html）
-- 智能加载 mermaid.min.js（无图表时不加载 1MB JS）
-- mermaid.min.js 压缩（2.75MB → 1.06MB）
-- WebView2 初始化时预加载 mermaid
-- 修复 MarkdownParser 返回值类型（ParseResult）
-- 添加 txt/image/pdf 文件支持（WebView2 预览）
-- Image/PDF 文件强制只读模式
-- 拖拽只允许 md/txt 文件
-
-### v1.5
-- 修复 WebView2 快捷键冲突（Ctrl+N/O/S/E/P/F）
-- 全局钩子拦截键盘快捷键
-- 窗口标题显示当前模式 [编辑]/[预览]
-- 代码清理：DLL 移到 lib/ 目录
-- build.bat 错误处理改进
-
-### v1.4
-- Markdig 替换手写 MarkdownParser（CommonMark 标准）
-- 修复 Mermaid 中文编码问题
-- Mermaid 语法自动修正
-- 修复 DropHook 64位指针截断
-- WebView2 初始化失败友好提示
-
-### v1.3
-- 预览渲染改用 NavigateToString（无需临时文件）
-- Mermaid 脚本内联到 HTML，DOMContentLoaded 时机执行
-- OnTextChanged 防抖机制（300ms），提升编辑性能
-- 全局异常处理 + 崩溃日志
-- RichTextBox ScrollBars 改为 Both（支持水平滚动）
-- FindReplaceDialog 关闭时清空状态
-- 图标静态缓存
-- HelpForm 迁移到 WebView2
-
-### v1.2
-- 升级到 .NET Framework 4.8
-- WebBrowser 替换为 WebView2 (Edge 内核)
-- Mermaid 图表支持
-
-### v1.1
-- 窗口焦点管理修复 (SendKeys 发送到正确窗口)
-- JavaScript 错误捕获和日志记录
-- 调试日志输出到 Release/debug_\<pid\>.log
-- E2E 测试扩展到 10 项
-
-### v1.0
-- 基础编辑/预览切换
-- 文件打开/保存/另存
-- 拖拽支持 (全局钩子)
-- 文件关联注册
-- 帮助对话框 (Esc关闭)
-- 状态栏 (字数/词数/大小/编码)
-- 缩放控制 (50%-200%)
-- 窗体图标
-- RichTextBox 回车换行
-- 快捷键支持 (Ctrl+N/O/S/E/P/F)
-- 最近文件列表
-- 单元测试 (30项)
-- E2E 测试 (8项)
-- 关联文件图标
-- Ctrl+滚轮缩放状态栏同步
-- Markdown 解析缓存优化
-- 深色模式切换
-- 查找替换改进 (上一个/下一个、非模态、ESC关闭)
-- WebBrowser 超宽自动换行
+- TestOutlinePanel - 大纲面板测试
+- TestFileTypeDetection - 文件类型检测

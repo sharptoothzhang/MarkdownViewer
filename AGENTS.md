@@ -88,6 +88,10 @@ using (OpenFileDialog d = new OpenFileDialog()) {
 - 预览模式下编辑不会同步到源文本
 - RichTextBox 不支持 `AcceptsReturn` 属性
 
+## 注意事项
+
+- **WebView2Loader.dll 架构匹配**: 系统为 64 位，必须使用 `runtimes\win-x64\native\WebView2Loader.dll`。使用 win-x86 版本会导致 "试图加载格式不正确的程序" 错误（HRESULT:0x8007000B）。
+
 ## 发布
 
 1. 确保 `MarkdownViewer.exe`, `app.ico` 在同一目录
