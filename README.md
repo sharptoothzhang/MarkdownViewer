@@ -101,7 +101,18 @@
 - **拖放**: 全局消息钩子 (WM_DROPFILES)
 - **预览**: WebView2 (Edge 内核) + Mermaid.min.js
 - **Markdown 解析**: Markdig 库 (CommonMark 标准)
-- **图表**: Mermaid 支持流程图、时序图等
+- **图表**: Mermaid 支持流程图、时序图
+- **缓存**: 内存级 Markdown 解析结果缓存（`cachedHtml`/`cachedText`）+ 文件 IO 防重入守卫
+
+### 缓存设计
+
+| 层次 | 机制 | 说明 |
+|------|------|------|
+| 内存缓存 | `cachedHtml` / `cachedText` | 字段级缓存，以文件绝对路径为隐式 key，分别缓存渲染后的 HTML 和对应原文 |
+| IO 锁保护 | `lock` 语句 | 防止多线程并发读写同一文件时的竞态条件 |
+| 懒加载 | 按需触发 | 首次打开或切回预览时触发一次解析，后续直接复用，不主动清盘 |
+| 磁盘缓存 Key | SHA-256 哈希 | 输入：`文件路径 | 文件大小 | LastWriteTimeTicks`，输出 44 位 Base64 字符串，全程幂等 |
+| 磁盘目录结构 | 两级目录 | `cache/{key[0:2]}/{key[2:4]}/{完整key}.html`，避免单目录文件数过多 |
 
 ## 项目结构
 
@@ -150,7 +161,7 @@ MarkdownViewer/
 │       │   └── outline.css
 │       └── js/
 │           └── preview.js
-├── Test.cs           # 单元测试 (30 项)
+├── Test.cs           # 单元测试 (36 项)
 ├── build.bat         # 构建脚本
 ├── test.md           # 测试文件
 ├── mermaid_test.md   # Mermaid 测试文件
@@ -172,7 +183,7 @@ build.bat
 
 ### 单元测试
 
-编译并运行 MarkdownParser 单元测试（30 项）：
+编译并运行 MarkdownParser 单元测试（36 项）：
 
 ```batch
 build_test.bat

@@ -22,6 +22,21 @@ namespace MarkdownViewer.Core
                 Directory.CreateDirectory(CacheDir);
         }
 
+        public static string GetCompositeKey(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath)) return "";
+            try
+            {
+                var info = new FileInfo(filePath);
+                string raw = filePath + "|" + info.Length + "|" + info.LastWriteTimeUtc.Ticks;
+                return HashString(raw);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
         public static string ComputeFileHash(string filePath)
         {
             try
@@ -56,79 +71,73 @@ namespace MarkdownViewer.Core
             }
         }
 
+        // 缓存目录分层规则（两级目录 + 完整 key 作文件名）：
+        //   key 为 base64 字符串，长度为动态值（当前实现中为 44 位）
+        //   存储路径 = cache/{key[0..2]}/{key[2..4]}/{完整key}.html
+        //   例：key = "aabbccddee..." → cache/aa/bb/aabbccddee....html
+        // 目的：通过首两段各2位字符做两级目录划分，使单个目录下文件数可控；
+        //       同时保留完整 key 作为文件名便于通过 key 直接定位文件。
         public static string GetCacheDir(string fileHash)
         {
             if (string.IsNullOrEmpty(fileHash)) return "";
-            string dir1 = fileHash.Substring(0, Math.Min(2, fileHash.Length));
-            string dir2 = fileHash.Substring(2, Math.Min(8, fileHash.Length - 2));
-            return Path.Combine(CacheDir, dir1, dir2);
+            string p1 = fileHash.Length >= 2 ? fileHash.Substring(0, 2) : fileHash;
+            string p2 = fileHash.Length >= 4 ? fileHash.Substring(2, 2) : "00";
+            return Path.Combine(CacheDir, p1, p2);
         }
 
-        public static CacheEntry ReadCache(string fileHash, FileDescription description)
+        // 由 key 计算出缓存在磁盘上的完整文件路径（含文件名）
+        // 格式：<CacheDir>/{key[0..2]}/{key[2..4]}/{完整key}.html
+        internal static string GetCacheFilePath(string key)
         {
-            string cacheDir = GetCacheDir(fileHash);
-            string metadataPath = Path.Combine(cacheDir, "metadata.json");
-            
-            if (!File.Exists(metadataPath))
-                return null;
+            if (string.IsNullOrEmpty(key)) return "";
+            return Path.Combine(GetCacheDir(key), key + ".html");
+        }
 
+        public static CacheEntry ReadCache(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return null;
+            string htmlPath = GetCacheFilePath(key);
+            if (!File.Exists(htmlPath)) return null;
             try
             {
-                string json = File.ReadAllText(metadataPath);
-                var metadata = ParseMetadata(json);
-                
-                if (metadata == null)
-                    return null;
-
-                if (metadata.fileLength != description.FileLength || metadata.lastModified != description.LastModified)
-                    return null;
-
-                string htmlPath = Path.Combine(cacheDir, "preview.html");
-
-                if (!File.Exists(htmlPath))
-                    return null;
-
                 string html = File.ReadAllText(htmlPath);
-
-                metadata.lastAccess = DateTime.Now;
-                metadata.accessCount++;
-                File.WriteAllText(metadataPath, SerializeMetadata(metadata));
-
-                return new CacheEntry
-                {
-                    Html = html,
-                    Metadata = metadata
-                };
+                return new CacheEntry { Html = html, Metadata = new CacheMetadata() };
             }
             catch
             {
                 return null;
             }
+        }
+
+        // ===== 以下为旧版接口，已弃用，请使用上方基于 key 的重载 =====
+        // 保留仅作向后兼容占位，不建议继续调用
+
+        public static CacheEntry ReadCache(string fileHash, FileDescription description)
+        {
+            // 委托给新方法，忽略过期的 description 参数
+            return ReadCache(fileHash);
         }
 
         public static void WriteCache(string fileHash, FileDescription description, string content, string html)
         {
+            // 委托给新方法，忽略过期的 description 参数
+            WriteCache(fileHash, html);
+        }
+
+        // ========== 新版接口：基于完整 key 的文件路径 ==========
+
+        public static void WriteCache(string key, string html)
+        {
+            if (string.IsNullOrEmpty(key) || html == null) return;
             try
             {
-                string cacheDir = GetCacheDir(fileHash);
-                if (!Directory.Exists(cacheDir))
-                    Directory.CreateDirectory(cacheDir);
-
-                File.WriteAllText(Path.Combine(cacheDir, "preview.html"), html);
-
-                var metadata = new CacheMetadata
-                {
-                    fileLength = description.FileLength,
-                    lastModified = description.LastModified,
-                    lastAccess = DateTime.Now,
-                    accessCount = 1
-                };
-
-                File.WriteAllText(Path.Combine(cacheDir, "metadata.json"), SerializeMetadata(metadata));
+                string fullPath = GetCacheFilePath(key);
+                string dir = System.IO.Path.GetDirectoryName(fullPath);
+                if (!Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                File.WriteAllText(fullPath, html);
             }
-            catch
-            {
-            }
+            catch { }
         }
 
         static CacheMetadata ParseMetadata(string json)
@@ -193,6 +202,16 @@ namespace MarkdownViewer.Core
             return sb.ToString();
         }
 
+        private static string HashString(string input)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(input);
+                byte[] hash = sha.ComputeHash(bytes);
+                return Convert.ToBase64String(hash);
+            }
+        }
+
         static string EscapeJson(string s)
         {
             if (s == null) return "";
@@ -240,31 +259,32 @@ namespace MarkdownViewer.Core
                 if (!Directory.Exists(CacheDir)) return;
 
                 DateTime cutoff = DateTime.Now - CacheExpiry;
-                string[] dirs = Directory.GetDirectories(CacheDir);
+                string[] partitions = Directory.GetDirectories(CacheDir);
 
-                foreach (string dir in dirs)
+                foreach (string partition in partitions)
                 {
                     try
                     {
-                        string metadataPath = Path.Combine(dir, "metadata.json");
-                        if (!File.Exists(metadataPath)) continue;
+                        if (!Directory.Exists(partition)) continue;
 
-                        string json = File.ReadAllText(metadataPath);
-                        var metadata = ParseMetadata(json);
-                        
-                        if (metadata != null && metadata.lastAccess < cutoff)
+                        string[] shards = Directory.GetDirectories(partition);
+                        foreach (string shard in shards)
                         {
-                            Directory.Delete(dir, true);
+                            try
+                            {
+                                if (!Directory.Exists(shard)) continue;
+
+                                // 直接按文件自身修改时间判定过期，不再依赖已弃用的 metadata.json
+                                if (new DirectoryInfo(shard).LastWriteTime < cutoff)
+                                    Directory.Delete(shard, true);
+                            }
+                            catch { }
                         }
                     }
-                    catch
-                    {
-                    }
+                    catch { }
                 }
             }
-            catch
-            {
-            }
+            catch { }
         }
     }
 

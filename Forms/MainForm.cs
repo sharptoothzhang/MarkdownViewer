@@ -30,11 +30,11 @@ namespace MarkdownViewer.Forms
         bool IsPreviewMode = true;
         bool IsDirty = false;
         float ZoomLevel = 100f;
+        bool needsPreviewUpdate = false;
         Image editIcon;
         Image eyeIcon;
         string cachedHtml = null;
         string cachedText = null;
-        System.Windows.Forms.Timer previewDebounceTimer;
         public bool EnableDebugLog = false;
         enum FileType { Unknown, Markdown, Text, Image, Pdf }
         FileType currentFileType = FileType.Unknown;
@@ -79,10 +79,6 @@ namespace MarkdownViewer.Forms
 
             SetupStatusBar();
             SetupMenu();
-
-            previewDebounceTimer = new System.Windows.Forms.Timer();
-            previewDebounceTimer.Interval = 300;
-            previewDebounceTimer.Tick += OnPreviewDebounceTick;
 
             CacheManager.StartCleanupTimer();
 
@@ -295,9 +291,10 @@ namespace MarkdownViewer.Forms
                 recentMenu.Enabled = true;
                 foreach (string f in files)
                 {
-                    string name = Path.GetFileName(f);
-                    ToolStripMenuItem item = new ToolStripMenuItem(name, null, delegate(object s, EventArgs e) { OpenFile(f); });
-                    item.ToolTipText = f;
+                    string fileRef = f;
+                    string name = Path.GetFileName(fileRef);
+                    ToolStripMenuItem item = new ToolStripMenuItem(name, null, delegate(object s, EventArgs e) { OpenFile(fileRef); });
+                    item.ToolTipText = fileRef;
                     recentMenu.DropDownItems.Add(item);
                 }
                 recentMenu.DropDownItems.Add(new ToolStripSeparator());
@@ -395,16 +392,8 @@ namespace MarkdownViewer.Forms
         void OnTextChanged(object sender, EventArgs e)
         {
             IsDirty = true;
-            cachedHtml = null;
+            needsPreviewUpdate = true;
             UpdateStatusBar();
-            previewDebounceTimer.Stop();
-            previewDebounceTimer.Start();
-        }
-
-        void OnPreviewDebounceTick(object sender, EventArgs e)
-        {
-            previewDebounceTimer.Stop();
-            RefreshPreview();
         }
 
         void NewFile()
@@ -470,18 +459,22 @@ namespace MarkdownViewer.Forms
             }
             else if (currentFileType == FileType.Markdown)
             {
-                string fileHash = CacheManager.ComputeFileHash(path);
-                FileDescription description = CacheManager.GetFileDescription(path);
-                CacheEntry cache = CacheManager.ReadCache(fileHash, description);
+                Editor.Text = File.ReadAllText(path);
+                string cacheKey = CacheManager.GetCompositeKey(path);
+                CacheEntry cache = CacheManager.ReadCache(cacheKey);
                 
                 if (cache != null)
                 {
                     cachedHtml = cache.Html;
-                    cachedText = cache.Html;
+                    cachedText = Editor.Text;
+                    if (IsPreviewMode)
+                    {
+                        try { Preview.CoreWebView2?.NavigateToString(cachedHtml); }
+                        catch (Exception ex) { Log("CACHE", "ReadCache NavigateFromString failed: " + ex.Message); }
+                    }
                 }
                 else
                 {
-                    Editor.Text = File.ReadAllText(path);
                     if (IsPreviewMode) RefreshPreview();
                 }
             }
@@ -639,7 +632,15 @@ namespace MarkdownViewer.Forms
             ViewToggleBtn.Image = eyeIcon;
             string name = string.IsNullOrEmpty(CurrentFile) ? "无标题" : System.IO.Path.GetFileName(CurrentFile);
             Text = name + " [预览] - Markdown Viewer";
-            RefreshPreviewForCurrentFile();
+            if (needsPreviewUpdate)
+            {
+                RefreshPreview();
+                needsPreviewUpdate = false;
+            }
+            else
+            {
+                RefreshPreviewForCurrentFile();
+            }
             OutlineMenuItem.Checked = (currentFileType == FileType.Markdown);
             if (wasFindVisible && !string.IsNullOrEmpty(findText))
             {
@@ -710,15 +711,14 @@ namespace MarkdownViewer.Forms
                     cachedHtml = BuildPreviewHtml(result.Html, result.Headings, currentFileType == FileType.Markdown);
                     Log("PREVIEW", "Final HTML length=" + cachedHtml.Length);
                     
-                    if (!string.IsNullOrEmpty(CurrentFile) && currentFileType == FileType.Markdown)
+if (!string.IsNullOrEmpty(CurrentFile) && currentFileType == FileType.Markdown)
+                {
+                    string cacheKey = CacheManager.GetCompositeKey(CurrentFile);
+                    if (!string.IsNullOrEmpty(cacheKey))
                     {
-                        string fileHash = CacheManager.ComputeFileHash(CurrentFile);
-                        FileDescription description = CacheManager.GetFileDescription(CurrentFile);
-                        if (!string.IsNullOrEmpty(fileHash))
-                        {
-                            CacheManager.WriteCache(fileHash, description, text, cachedHtml);
-                        }
+                        CacheManager.WriteCache(cacheKey, cachedHtml);
                     }
+                }
                 }
                 try
                 {

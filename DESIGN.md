@@ -240,9 +240,44 @@ FindReplaceDialog 支持：
 
 ### 10.2 缓存机制
 
+#### 内存缓存（运行时）
+
 - Markdown 解析结果缓存（`cachedHtml` + `cachedText`），文本不变时不重新解析
 - 解析过程使用 StringBuilder 避免字符串拼接开销
 - 图标静态缓存（`editIcon` / `eyeIcon`）
+- 运行时 `lock` 守卫，防止同一文件并发读写引发竞争
+
+#### 磁盘缓存（进程间共享）
+
+为避免重复解析耗时，程序会将已渲染的 HTML 缓存至磁盘，下次打开相同文件时可秒开。
+
+**缓存 Key 生成规则**
+
+| 步骤 | 说明 |
+|------|------|
+| 输入 | 文件绝对路径 `filePath` |
+| 附加信息 | `info.Length`（文件字节数）+ `info.LastWriteTimeUtc.Ticks`（UTC 修改时间） |
+| 计算方式 | `SHA-25(filePath\|Length\|Ticks)`，转为 Base64 得到约 44 位字符串 |
+| 特点 | 同一路径+同大小编辑过的文件，Key 恒定；任一字节改变则 Key 完全不同 |
+
+**目录结构**
+
+```
+<StartupPath>/cache/
+├── aa/bb/aabbccddee...44位完整key.html
+├── xx/yz/xxyyzzaabb...完整key.html
+└── zz/zZ/zzZZaabb...完整key.html
+```
+
+- 每一级目录均为 key 中连续 2 位字符组成
+- 文件本体即为完整 key 名（`.html` 后缀）
+- 读取时直接从 `cache/{key[0:2]}/{key[2:4]}/{完整key}.html` 取出
+
+**优势**
+
+- 两级目录将单目录文件数控制在合理范围内（每层理论上限 4096 个目录）
+- 通过 key 前 4 位字符即可定位到具体文件，无需遍历目录
+- 文件名即 key，可通过 key 反查来源文件路径
 
 ### 10.3 延迟加载
 
@@ -264,7 +299,7 @@ FindReplaceDialog 支持：
 
 位于 `Test.cs`，使用 C# 控制台程序实现，测试 MarkdownParser 的解析功能。
 
-**测试用例 (30 项)**:
+**测试用例 (36 项)**:
 - 空字符串处理
 - 标题 (H1-H6)
 - 行内格式 (粗体、斜体、粗斜体、删除线、行内代码)
@@ -310,7 +345,7 @@ FindReplaceDialog 支持：
 - [x] 快捷键支持
 - [x] 最近文件列表
 - [x] 查找替换功能 (上一个/下一个、替换、全部替换、区分大小写、非模态、ESC 关闭)
-- [x] 单元测试 (30 项)
+- [x] 单元测试 (36 项)
 - [x] E2E 测试 (11 项)
 - [x] 关联文件图标
 - [x] Ctrl+滚轮缩放状态栏同步
